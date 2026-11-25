@@ -1,0 +1,150 @@
+-- ============================================================
+-- Olist E-Commerce Analytics - DAX measures
+-- Create a dedicated measures table: Enter Data > name it "_Measures"
+-- Then add each measure below (New Measure), grouped with comments.
+-- Verified against the raw data; expected values in the comments.
+-- ============================================================
+
+-- ---------- Core sales ----------
+Total Revenue = SUM ( fct_order_items[price] )
+-- expected ~ R$ 13,591,644
+
+Total Freight = SUM ( fct_order_items[freight_value] )
+-- expected ~ R$ 2,251,909
+
+GMV = SUM ( fct_order_items[item_total] )
+-- expected ~ R$ 15,843,553 (price + freight)
+
+Items Sold = COUNTROWS ( fct_order_items )
+-- expected 112,650
+
+Total Orders = COUNTROWS ( fct_orders )
+-- expected 99,441
+
+Avg Order Value = DIVIDE ( [Total Revenue], [Total Orders] )
+-- expected ~ R$ 136.68
+
+Avg Items per Order = DIVIDE ( [Items Sold], [Total Orders] )
+-- expected ~ 1.13
+
+Avg Item Price = AVERAGE ( fct_order_items[price] )
+
+Freight % of GMV = DIVIDE ( [Total Freight], [GMV] )
+
+-- ---------- Orders & status ----------
+Delivered Orders = CALCULATE ( [Total Orders], fct_orders[is_delivered] = 1 )
+-- expected 96,478
+
+Canceled Orders = CALCULATE ( [Total Orders], fct_orders[is_canceled] = 1 )
+-- expected 625
+
+Cancel Rate = DIVIDE ( [Canceled Orders], [Total Orders] )
+-- expected ~ 0.6 %
+
+-- ---------- Customers ----------
+Total Customers = DISTINCTCOUNT ( dim_customers[customer_unique_id] )
+-- expected 96,096
+
+Orders per Customer = DIVIDE ( [Total Orders], [Total Customers] )
+
+Repeat Customers =
+COUNTROWS (
+    FILTER (
+        VALUES ( dim_customers[customer_unique_id] ),
+        CALCULATE ( DISTINCTCOUNT ( fct_orders[order_id] ) ) > 1
+    )
+)
+-- expected 2,997
+
+Repeat Customer Rate = DIVIDE ( [Repeat Customers], [Total Customers] )
+-- expected ~ 3.1 %
+
+Revenue per Customer = DIVIDE ( [Total Revenue], [Total Customers] )
+
+-- ---------- Sellers & products ----------
+Active Sellers = DISTINCTCOUNT ( fct_order_items[seller_id] )
+-- expected 3,095
+
+Products Sold = DISTINCTCOUNT ( fct_order_items[product_id] )
+-- expected 32,951
+
+Avg Seller Revenue = DIVIDE ( [Total Revenue], [Active Sellers] )
+
+-- ---------- Payments ----------
+Total Paid = SUM ( fct_payments[payment_value_total] )
+-- expected ~ R$ 16,008,872 (covers all orders incl. later-canceled)
+
+Avg Installments = AVERAGE ( fct_payments[payment_installments_max] )
+-- expected ~ 2.9
+
+Credit Card Share =
+DIVIDE (
+    CALCULATE ( [Total Paid], fct_payments[payment_type_main] = "credit_card" ),
+    [Total Paid]
+)
+
+-- ---------- Delivery ----------
+Avg Delivery Days =
+CALCULATE ( AVERAGE ( fct_orders[delivery_days] ), fct_orders[is_delivered] = 1 )
+-- expected ~ 12.1 days
+
+Avg Estimated Days =
+CALCULATE ( AVERAGE ( fct_orders[estimated_days] ), fct_orders[is_delivered] = 1 )
+-- expected ~ 23.4 days
+
+On-Time Delivery % =
+DIVIDE (
+    CALCULATE ( SUM ( fct_orders[on_time] ), fct_orders[is_delivered] = 1 ),
+    [Delivered Orders]
+)
+-- expected ~ 91.9 %
+
+Late Deliveries =
+CALCULATE ( [Total Orders], fct_orders[is_delivered] = 1, fct_orders[on_time] = 0 )
+
+Avg Approval Hours = AVERAGE ( fct_orders[approval_hours] )
+-- expected ~ 10.4 hours
+
+-- ---------- Reviews ----------
+Reviews = COUNTROWS ( fct_reviews )
+-- expected 98,140
+
+Avg Review Score = AVERAGE ( fct_reviews[review_score] )
+-- expected ~ 4.09
+
+5-Star Share =
+DIVIDE (
+    CALCULATE ( [Reviews], fct_reviews[review_score] = 5 ),
+    [Reviews]
+)
+-- expected ~ 57.8 %
+
+Negative Review Share =
+DIVIDE (
+    CALCULATE ( [Reviews], fct_reviews[review_score] <= 2 ),
+    [Reviews]
+)
+-- expected ~ 14.6 %
+
+-- ---------- Time intelligence (need dim_date marked as date table) ----------
+Revenue Prev Month =
+CALCULATE ( [Total Revenue], PREVIOUSMONTH ( dim_date[date] ) )
+
+Revenue MoM % =
+DIVIDE ( [Total Revenue] - [Revenue Prev Month], [Revenue Prev Month] )
+
+Revenue YTD =
+TOTALYTD ( [Total Revenue], dim_date[date] )
+
+Orders Prev Month =
+CALCULATE ( [Total Orders], PREVIOUSMONTH ( dim_date[date] ) )
+
+Orders MoM % =
+DIVIDE ( [Total Orders] - [Orders Prev Month], [Orders Prev Month] )
+
+-- Revenue by delivery date (uses the inactive relationship)
+Revenue by Delivery Date =
+CALCULATE (
+    [Total Revenue],
+    USERELATIONSHIP ( fct_orders[order_delivered_date], dim_date[date] )
+)
